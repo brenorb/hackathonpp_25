@@ -16,10 +16,32 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import App from './App';
+jest.mock('react-syntax-highlighter/dist/esm/styles/hljs', () => ({ vs2015: {} }));
+jest.mock('vega-embed', () => jest.fn());
+// Keep browser audio idle while testing the disconnected console in jsdom.
+jest.mock('./lib/utils', () => ({
+  ...jest.requireActual('./lib/utils'),
+  audioContext: () => new Promise(() => {}),
+}));
 
-test('renders learn react link', () => {
-  render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+test('renders the console without connecting on startup', () => {
+  const previousKey = process.env.REACT_APP_GEMINI_API_KEY;
+  process.env.REACT_APP_GEMINI_API_KEY = 'synthetic-fixture';
+  const socket = jest.spyOn(window, 'WebSocket').mockImplementation(() => {
+    throw new Error('Unexpected WebSocket connection in the startup test');
+  });
+  try {
+    const App = require('./App').default;
+    render(<App />);
+    expect(screen.getByRole('heading', { name: 'Console' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'play_arrow' })).toBeInTheDocument();
+    expect(socket).not.toHaveBeenCalled();
+  } finally {
+    socket.mockRestore();
+    if (previousKey === undefined) {
+      delete process.env.REACT_APP_GEMINI_API_KEY;
+    } else {
+      process.env.REACT_APP_GEMINI_API_KEY = previousKey;
+    }
+  }
 });
